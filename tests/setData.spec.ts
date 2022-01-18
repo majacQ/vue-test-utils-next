@@ -124,7 +124,7 @@ describe('setData', () => {
     )
   })
 
-  // https://github.com/vuejs/vue-test-utils-next/issues/538
+  // https://github.com/vuejs/test-utils/issues/538
   it('updates data set via data mounting option using setData', async () => {
     const Comp = defineComponent<
       {},
@@ -133,7 +133,7 @@ describe('setData', () => {
       { isFieldNull: any }
     >({
       template: `
-        <div>{{ isFieldNull ? 'It is null' : 'It is not null' }}</div> 
+        <div>{{ isFieldNull ? 'It is null' : 'It is not null' }}</div>
       `,
       data() {
         return {
@@ -164,5 +164,26 @@ describe('setData', () => {
     expect(wrapper.html()).toContain('It is not null')
     expect(wrapper.vm.field).toEqual(10)
     expect(wrapper.vm.isFieldNull).toBe(false)
+  })
+
+  it('overwrites array with new value', async () => {
+    const Comp = {
+      template: `
+        <div>{{state.items.join(",")}}</div>
+      `,
+      data() {
+        return {
+          state: {
+            items: ['1']
+          }
+        }
+      }
+    }
+
+    const wrapper = mount(Comp)
+    expect(wrapper.html()).toMatchInlineSnapshot(`"<div>1</div>"`)
+
+    await wrapper.setData({ state: { items: ['2', '3'] } })
+    expect(wrapper.html()).toMatchInlineSnapshot(`"<div>2,3</div>"`)
   })
 })

@@ -42,7 +42,28 @@ test('mounts a component', () => {
 })
 ```
 
-Notice that `mount` accepts a second parameter to define the component's state and app's global configuration.
+Notice that `mount` accepts a second parameter to define the component's state configuration.
+
+**Example: mounting with component props and a Vue App plugin**
+
+```js
+const wrapper = mount(Component, {
+  props: {
+    msg: 'world'
+  },
+  global: {
+    plugins: [vuex]
+  }
+})
+```
+
+#### options.global
+
+Among component state, you can configure the aformentioned Vue 3 app by the [`MountingOptions.global` config property.](#global) This would be useful for providing mocked values which your components expect to have available.
+
+::: tip
+If you find yourself having to set common App configuration for many of your tests, then you can set configuration for your entire test suite using the exported [`config` object.](#config)
+:::
 
 ### attachTo
 
@@ -258,7 +279,7 @@ slots?: { [key: string]: Slot } & { default?: Slot }
 
 **Details:**
 
-Slots can be a string, a component imported from a `.vue` file or a render function. Currently providing an object with a `template` key is not supported.
+Slots can be a string or any valid component definition either imported from a `.vue` file or provided inline
 
 `Component.vue`:
 
@@ -281,6 +302,7 @@ Slots can be a string, a component imported from a `.vue` file or a render funct
 `Component.spec.js`:
 
 ```js
+import { h } from 'vue';
 import { mount } from '@vue/test-utils'
 import Component from './Component.vue'
 import Bar from './Bar.vue'
@@ -304,19 +326,19 @@ test('renders slots content', () => {
 
 ```ts
 type GlobalMountOptions = {
-  components?: Record<string, Component | object>
+  plugins?: (Plugin | [Plugin, ...any[]])[]
   config?: Partial<Omit<AppConfig, 'isNativeTag'>>
-  directives?: Record<string, Directive>
   mixins?: ComponentOptions[]
   mocks?: Record<string, any>
-  plugins?: (Plugin | [Plugin, ...any[]])[]
   provide?: Record<any, any>
+  components?: Record<string, Component | object>
+  directives?: Record<string, Directive>
+  stubs?: Stubs = Record<string, boolean | Component> | Array<string>
   renderStubDefaultSlot?: boolean
-  stubs?: Record<any, any>
 }
 ```
 
-You can configure all the `global` options on both a per test basis and globally for all tests. [See here for how to configure project wide defaults](#global-config).
+You can configure all the `global` options on both a per test basis and also for the entire test suite. [See here for how to configure project wide defaults](#config-global).
 
 #### global.components
 
@@ -354,9 +376,7 @@ export default {
 
 ```vue
 <template>
-  <div class="global-component">
-    My Global Component
-  </div>
+  <div class="global-component">My Global Component</div>
 </template>
 ```
 
@@ -406,7 +426,6 @@ directives?: Record<string, Directive>
 
 ```js
 import { mount } from '@vue/test-utils'
-import Component from './Component.vue'
 
 import Directive from '@/directives/Directive'
 
@@ -1057,12 +1076,13 @@ findAll(selector: string): DOMWrapper<Element>[]
 
 ```js
 import { mount } from '@vue/test-utils'
-import Component from './Component.vue'
+import BaseTable from './BaseTable.vue'
 
 test('findAll', () => {
-  const wrapper = mount(Component)
+  const wrapper = mount(BaseTable)
 
-  wrapper.findAll('[data-test="number"]') //=> found; returns array of DOMWrapper
+  // .findAll() returns an array of DOMWrappers
+  const thirdRow = wrapper.findAll('span')[2]
 })
 ```
 
@@ -1075,7 +1095,6 @@ Finds a Vue Component instance and returns a `VueWrapper` if found. Returns `Err
 ```ts
 findComponent<T extends ComponentPublicInstance>(selector: new () => T): VueWrapper<T>
 findComponent<T extends ComponentPublicInstance>(selector: FindComponentSelector): VueWrapper<T>
-findComponent<T extends ComponentPublicInstance>(selector: any): VueWrapper<T>
 ```
 
 **Details:**
@@ -1143,19 +1162,34 @@ test('findComponent', () => {
 })
 ```
 
-**NOTE** `getComponent` and `findComponent` will not work on functional components, because they do not have an internal Vue instance (this is what makes functional components more performant). That means the following will **not** work:
+:::warning
+If `ref` in component points to HTML element, `findComponent` will return empty wrapper. This is intended behaviour
+:::
+
+:::warning Usage with CSS selectors
+Using `findComponent` with CSS selector might have confusing behavior
+
+Consider this example:
 
 ```js
-const Foo = () => h('div')
-
-const wrapper = mount(Foo)
-// doesn't work! You get a wrapper, but since there is not
-// associated Vue instance, you cannot use methods like
-// exists() and text()
-wrapper.findComponent(Foo) 
+const ChildComponent = {
+  name: 'Child',
+  template: '<div class="child"></div>'
+}
+const RootComponent = {
+  name: 'Root',
+  components: { ChildComponent },
+  template: '<child-component class="root" />'
+}
+const wrapper = mount(RootComponent)
+const rootByCss = wrapper.findComponent('.root') // => finds Root
+expect(rootByCss.vm.$options.name).toBe('Root')
+const childByCss = wrapper.findComponent('.child')
+expect(childByCss.vm.$options.name).toBe('Root') // => still Root
 ```
 
-For tests using functional component, consider using `get` or `find` and treating them like standard DOM nodes.
+The reason for such behavior is that `RootComponent` and `ChildComponent` are sharing same DOM node and only first matching component is included for each unique DOM node
+:::
 
 ### findAllComponents
 
@@ -1197,9 +1231,13 @@ test('findAllComponents', () => {
 })
 ```
 
+:::warning Usage with CSS selectors
+`findAllComponents` has same behavior when used with CSS selector as [findComponent](#findcomponent)
+:::
+
 ### get
 
-Gets an an element and returns a `DOMWrapper` if found. Otherwise it throws an error.
+Gets an element and returns a `DOMWrapper` if found. Otherwise it throws an error.
 
 **Signature:**
 
@@ -1436,20 +1474,6 @@ test('props', () => {
 })
 ```
 
-**NOTE** `getComponent` and `findComponent` will not work on functional components, because they do not have an internal Vue instance (this is what makes functional components more performant). That means the following will **not** work:
-
-```js
-const Foo = () => h('div')
-
-const wrapper = mount(Foo)
-// doesn't work! You get a wrapper, but since there is not
-// associated Vue instance, you cannot use methods like
-// exists() and text()
-wrapper.findComponent(Foo) 
-```
-
-For tests using functional component, consider using `get` or `find` and treating them like standard DOM nodes.
-
 :::tip
 As a rule of thumb, test against the effects of a passed prop (a DOM update, an emitted event, and so on). This will make tests more powerful than simply asserting that a prop is passed.
 :::
@@ -1571,7 +1595,7 @@ Sets a value on DOM element. Including:
 **Signature:**
 
 ```ts
-setValue(value: any, prop?: string): Promise<void>
+setValue(value: unknown, prop?: string): Promise<void>
 ```
 
 **Details:**
@@ -1807,6 +1831,28 @@ function shallowMount(Component, options?: MountingOptions): VueWrapper
 
 `shallowMount` behaves exactly like `mount`, but it stubs all child components by default. Essentially, `shallowMount(Component)` is an alias of `mount(Component, { shallow: true })`.
 
+## enableAutoUnmount
+
+**Signature:**
+
+```ts
+enableAutoUnmount(hook: Function));
+disableAutoUnmount(): void;
+```
+
+**Details:**
+
+`enableAutoUnmount` allows to automatically destroy Vue wrappers. Destroy logic is passed as callback to `hook` Function.
+Common usage is to use `enableAutoUnmount` with teardown helper functions provided by your test framework, such as `afterEach`:
+
+```ts
+import { enableAutoUnmount } from '@vue/test-utils'
+
+enableAutoUnmount(afterEach)
+```
+
+`disableAutoUnmount` might be useful if you want this behavior only in specific subset of your test suite and you want to explicitly disable this behavior
+
 ## flushPromises
 
 **Signature:**
@@ -1830,21 +1876,24 @@ Check out [Making HTTP requests](../guide/advanced/http-requests.md) to see an e
 ```ts
 type GlobalMountOptions = {
   plugins?: (Plugin | [Plugin, ...any[]])[]
-  config?: Partial<Omit<AppConfig, 'isNativeTag'>>  mixins?: ComponentOptions[]
+  config?: Partial<Omit<AppConfig, 'isNativeTag'>>
+  mixins?: ComponentOptions[]
   mocks?: Record<string, any>
   provide?: Record<any, any>
   components?: Record<string, Component | object>
   directives?: Record<string, Directive>
-  stubs?: Record<any, any>
+  stubs?: Stubs = Record<string, boolean | Component> | Array<string>
   renderStubDefaultSlot?: boolean
 }
 ```
 
 **Details:**
 
-Instead of configuring global mounting options on a per-test basis, you can configure them globally. These will be used by default every time you `mount` a component. You can then override the defaults via mounting options.
+Instead of configuring mounting options on a per test basis, you can configure them for your entire test suite. These will be used by default every time you `mount` a component. If desired, you can then override your defaults on a per test basis.
 
-An example might be globally mocking the `$t` variable from vue-i18n, globally stubbing out a component, or any other global item:
+**Example:**
+
+An example might be globally mocking the `$t` variable from vue-i18n and a component:
 
 `Component.vue`:
 
@@ -1883,7 +1932,7 @@ config.global.mocks = {
   $t: (text) => text
 }
 
-test('config.global', () => {
+test('config.global mocks and stubs', () => {
   const wrapper = mount(Component)
 
   expect(wrapper.html()).toBe('<p>message</p><div>My component</div>')

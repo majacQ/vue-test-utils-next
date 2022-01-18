@@ -299,7 +299,7 @@ describe('emitted', () => {
     expect(wrapper.emitted().compositionstart).not.toBe(undefined)
   })
 
-  it('https://github.com/vuejs/vue-test-utils-next/issues/436', async () => {
+  it('https://github.com/vuejs/test-utils/issues/436', async () => {
     const Foo = defineComponent({
       name: 'Foo',
       emits: ['foo'],
@@ -322,16 +322,46 @@ describe('emitted', () => {
     expect(wrapper.emitted('foo')).toHaveLength(1)
   })
 
-  it.each([EmitsEventSFC, EmitsEventScriptSetup])(
-    'captures emitted events',
-    async (component) => {
-      const wrapper = mount(component)
-      await wrapper.trigger('click')
+  it('does not capture native events on component which render non-element root', async () => {
+    const Foo = defineComponent({ template: 'plain-string' })
+    const wrapper = mount(Foo)
+    await wrapper.trigger('click')
+    expect(wrapper.emitted('click')).toBeUndefined()
+  })
 
-      expect(wrapper.emitted().click).toHaveLength(1)
-      expect(wrapper.emitted().bar).toHaveLength(2)
-      expect(wrapper.emitted().bar[0]).toEqual(['mounted'])
-      expect(wrapper.emitted().bar[1]).toEqual(['click'])
-    }
-  )
+  it('does not capture native events on component with multiple root element nodes', async () => {
+    const Foo = defineComponent({ template: '<div>1</div><div>2</div>' })
+    const wrapper = mount(Foo)
+    await wrapper.find('div').trigger('click')
+    expect(wrapper.emitted('click')).toBeUndefined()
+  })
+
+  it('capture native events on components which render multiple root nodes with only single element', async () => {
+    const Foo = defineComponent({
+      template: '<div>1</div><!-- comment node -->'
+    })
+    const wrapper = mount(Foo)
+    await wrapper.find('div').trigger('click')
+    expect(wrapper.emitted('click')).toHaveLength(1)
+  })
+
+  it('captures emitted events in SFC', async () => {
+    const wrapper = mount(EmitsEventSFC)
+    await wrapper.trigger('click')
+
+    expect(wrapper.emitted().click).toHaveLength(1)
+    expect(wrapper.emitted().bar).toHaveLength(2)
+    expect(wrapper.emitted().bar[0]).toEqual(['mounted'])
+    expect(wrapper.emitted().bar[1]).toEqual(['click'])
+  })
+
+  it('captures emitted events in script setup', async () => {
+    const wrapper = mount(EmitsEventScriptSetup)
+    await wrapper.trigger('click')
+
+    expect(wrapper.emitted().click).toHaveLength(1)
+    expect(wrapper.emitted().bar).toHaveLength(2)
+    expect(wrapper.emitted().bar[0]).toEqual(['mounted'])
+    expect(wrapper.emitted().bar[1]).toEqual(['click'])
+  })
 })

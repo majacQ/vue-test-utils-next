@@ -113,7 +113,7 @@ test('layout full page layout', () => {
 
 ## Advanced Usage
 
-You can also pass a render function to a slot mounting option, or even an SFC imported from a `vue` file:
+You can also pass a render function, an object with template or even an SFC imported from a `vue` file to a slot mounting option:
 
 ```js
 import { h } from 'vue'
@@ -123,7 +123,8 @@ test('layout full page layout', () => {
   const wrapper = mount(Layout, {
     slots: {
       header: Header
-      main: h('div', 'Main content')
+      main: h('div', 'Main Content'),
+      sidebar: { template: '<div>Sidebar</div>' },
       footer: '<div>Footer</div>',
     }
   })
@@ -134,9 +135,7 @@ test('layout full page layout', () => {
 })
 ```
 
-Note: passing a component using `{ template: '<div /> }` is not supported. Use a HTML string, render function, plain text, or an SFC.
-
-[Refer to the tests](https://github.com/vuejs/vue-test-utils-next/blob/9d3c2a6526f3d8751d29b2f9112ad2a3332bbf52/tests/mountingOptions/slots.spec.ts#L124-L167) for more examples and use cases.
+[Refer to the tests](https://github.com/vuejs/test-utils/blob/9d3c2a6526f3d8751d29b2f9112ad2a3332bbf52/tests/mountingOptions/slots.spec.ts#L124-L167) for more examples and use cases.
 
 ## Scoped Slots
 

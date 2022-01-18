@@ -15,13 +15,9 @@ export function isLegacyExtendedComponent(component: unknown): component is {
     return false
   }
 
-  // @ts-ignore Vue.extend is part of Vue2 compat API, types are missing
-  const fakeCmp = Vue.extend({})
-
   return (
     hasOwnProperty(component, 'super') &&
-    hasOwnProperty(component, 'options') &&
-    fakeCmp.super === component.super
+    (component.super as any).extend({}).super === component.super
   )
 }
 
@@ -31,15 +27,11 @@ export function unwrapLegacyVueExtendComponent<T>(
   return isLegacyExtendedComponent(selector) ? selector.options : selector
 }
 
-export function isLegacyFunctionalComponent(component: unknown) {
-  if (!isCompatEnabled('COMPONENT_FUNCTIONAL')) {
-    return false
-  }
-
-  return (
+export function isLegacyFunctionalComponent(component: unknown): boolean {
+  return Boolean(
     component &&
-    typeof component === 'object' &&
-    hasOwnProperty(component, 'functional') &&
-    component.functional
+      typeof component === 'object' &&
+      hasOwnProperty(component, 'functional') &&
+      component.functional
   )
 }

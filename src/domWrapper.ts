@@ -1,70 +1,40 @@
 import { config } from './config'
-import { isElementVisible } from './utils/isElementVisible'
 import BaseWrapper from './baseWrapper'
-import { createWrapperError } from './errorWrapper'
 import WrapperLike from './interfaces/wrapperLike'
+import { registerFactory, WrapperType } from './wrapperFactory'
+import { RefSelector } from './types'
+import { isRefSelector } from './utils'
+import { createWrapperError } from './errorWrapper'
 
-export class DOMWrapper<ElementType extends Element>
-  extends BaseWrapper<ElementType>
-  implements WrapperLike
-{
-  constructor(element: ElementType) {
+export class DOMWrapper<NodeType extends Node> extends BaseWrapper<NodeType> {
+  constructor(element: NodeType) {
     super(element)
     // plugins hook
     config.plugins.DOMWrapper.extend(this)
   }
 
-  isVisible() {
-    return isElementVisible(this.element)
+  getRootNodes() {
+    return [this.wrapperElement]
   }
 
-  html() {
-    return this.element.outerHTML
+  getCurrentComponent() {
+    return this.element.__vueParentComponent
   }
 
-  find<K extends keyof HTMLElementTagNameMap>(
-    selector: K
-  ): DOMWrapper<HTMLElementTagNameMap[K]>
-  find<K extends keyof SVGElementTagNameMap>(
-    selector: K
-  ): DOMWrapper<SVGElementTagNameMap[K]>
-  find<T extends Element>(selector: string): DOMWrapper<T>
-  find(selector: string): DOMWrapper<Element> {
-    const result = this.element.querySelector(selector)
-    if (result) {
-      return new DOMWrapper(result)
+  find(selector: string | RefSelector): DOMWrapper<any> {
+    const result = super.find(selector)
+    if (result.exists() && isRefSelector(selector)) {
+      return this.element.contains(result.element)
+        ? result
+        : createWrapperError('DOMWrapper')
     }
 
-    return createWrapperError('DOMWrapper')
+    return result
   }
 
-  get<K extends keyof HTMLElementTagNameMap>(
-    selector: K
-  ): Omit<DOMWrapper<HTMLElementTagNameMap[K]>, 'exists'>
-  get<K extends keyof SVGElementTagNameMap>(
-    selector: K
-  ): Omit<DOMWrapper<SVGElementTagNameMap[K]>, 'exists'>
-  get<T extends Element>(selector: string): Omit<DOMWrapper<T>, 'exists'>
-  get(selector: string): Omit<DOMWrapper<Element>, 'exists'> {
-    const result = this.find(selector)
-    if (result instanceof DOMWrapper) {
-      return result
-    }
-
-    throw new Error(`Unable to get ${selector} within: ${this.html()}`)
-  }
-
-  findAll<K extends keyof HTMLElementTagNameMap>(
-    selector: K
-  ): DOMWrapper<HTMLElementTagNameMap[K]>[]
-  findAll<K extends keyof SVGElementTagNameMap>(
-    selector: K
-  ): DOMWrapper<SVGElementTagNameMap[K]>[]
-  findAll<T extends Element>(selector: string): DOMWrapper<T>[]
-  findAll(selector: string): DOMWrapper<Element>[] {
-    return Array.from(this.element.querySelectorAll(selector)).map(
-      (x) => new DOMWrapper(x)
-    )
+  findAllComponents(selector: any): any {
+    const results = super.findAllComponents(selector)
+    return results.filter((r: WrapperLike) => this.element.contains(r.element))
   }
 
   private async setChecked(checked: boolean = true) {
@@ -139,3 +109,5 @@ export class DOMWrapper<ElementType extends Element>
     return new DOMWrapper(parentElement).trigger('change')
   }
 }
+
+registerFactory(WrapperType.DOMWrapper, (element) => new DOMWrapper(element))

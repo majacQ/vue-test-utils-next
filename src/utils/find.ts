@@ -1,14 +1,19 @@
 import {
-  ComponentPublicInstance,
+  ComponentInternalInstance,
   VNode,
   VNodeArrayChildren,
-  VNodeNormalizedChildren
+  VNodeNormalizedChildren,
+  VNodeTypes
 } from 'vue'
 import { FindAllComponentsSelector } from '../types'
-import { getOriginalVNodeTypeFromStub } from '../stubs'
+import {
+  getOriginalStubFromSpecializedStub,
+  getOriginalVNodeTypeFromStub
+} from '../stubs'
 import { isComponent } from '../utils'
 import { matchName } from './matchName'
 import { unwrapLegacyVueExtendComponent } from './vueCompatSupport'
+import { getComponentName, getComponentRegisteredName } from './componentName'
 
 /**
  * Detect whether a selector matches a VNode
@@ -28,37 +33,38 @@ export function matches(
   const nodeType = node.type
   if (!isComponent(nodeType)) return false
 
-  if (node.type === selector) {
-    return true
-  }
-
   if (typeof selector === 'string') {
     return node.el?.matches?.(selector)
   }
 
-  if (
-    typeof selector === 'object' &&
-    getOriginalVNodeTypeFromStub(nodeType) === selector
-  ) {
-    // we are looking at stub of this exact component
+  // When we're using stubs we want user to be able to
+  // find stubbed components both by original component
+  // or stub definition. That's why we are trying to
+  // extract original component and also stub, which was
+  // used to create specialized stub for render
+
+  const nodeTypeCandidates: VNodeTypes[] = [
+    nodeType,
+    getOriginalVNodeTypeFromStub(nodeType),
+    getOriginalStubFromSpecializedStub(nodeType)
+  ].filter(Boolean) as VNodeTypes[]
+
+  if (nodeTypeCandidates.includes(selector)) {
     return true
   }
 
   let componentName: string | undefined
-  if ('name' in nodeType) {
-    // match normal component definitions
-    componentName = nodeType.name
-  }
-  if (!componentName && 'displayName' in nodeType) {
-    // match functional components
-    componentName = nodeType.displayName
-  }
+  componentName = getComponentName(node.component, nodeType)
+
   let selectorName = selector.name
 
   // the component and selector both have a name
   if (componentName && selectorName) {
     return matchName(selectorName, componentName)
   }
+
+  componentName =
+    getComponentRegisteredName(node.component, nodeType) || undefined
 
   // if a name is missing, then check the locally registered components in the parent
   if (node.component.parent) {
@@ -73,10 +79,10 @@ export function matches(
         componentName = key
       }
     }
-    // we may have one or both missing names
-    if (selectorName && componentName) {
-      return matchName(selectorName, componentName)
-    }
+  }
+
+  if (selectorName && componentName) {
+    return matchName(selectorName, componentName)
   }
 
   return false
@@ -127,11 +133,8 @@ function findAllVNodes(
   const nodes: VNode[] = [vnode]
   while (nodes.length) {
     const node = nodes.shift()!
-    // match direct children
     aggregateChildren(nodes, node.children)
     if (node.component) {
-      // match children of the wrapping component
-      aggregateChildren(nodes, node.component.subTree.children)
       aggregateChildren(nodes, [node.component.subTree])
     }
     if (node.suspense) {
@@ -139,7 +142,7 @@ function findAllVNodes(
       const { activeBranch } = node.suspense
       aggregateChildren(nodes, [activeBranch])
     }
-    if (matches(node, selector) && !matchingNodes.includes(node)) {
+    if (matches(node, selector)) {
       matchingNodes.push(node)
     }
   }
@@ -150,9 +153,15 @@ function findAllVNodes(
 export function find(
   root: VNode,
   selector: FindAllComponentsSelector
-): ComponentPublicInstance[] {
-  return findAllVNodes(root, selector).map(
-    // @ts-ignore
-    (vnode: VNode) => vnode.component!.proxy!
-  )
+): ComponentInternalInstance[] {
+  let matchingVNodes = findAllVNodes(root, selector)
+
+  if (typeof selector === 'string') {
+    // When searching by CSS selector we want only one (topmost) vnode for each el`
+    matchingVNodes = matchingVNodes.filter(
+      (vnode: VNode) => vnode.component!.parent?.vnode.el !== vnode.el
+    )
+  }
+
+  return matchingVNodes.map((vnode: VNode) => vnode.component!)
 }

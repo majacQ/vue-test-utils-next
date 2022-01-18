@@ -10,7 +10,7 @@
     "esModuleInterop": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
-    "allowJs": true,
+    "noUnusedLocals": true,
     "baseUrl": ".",
     "paths": {
       "vue": [

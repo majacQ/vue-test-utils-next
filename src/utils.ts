@@ -1,4 +1,4 @@
-import { GlobalMountOptions } from './types'
+import { GlobalMountOptions, RefSelector } from './types'
 import { ComponentOptions, ConcreteComponent, FunctionalComponent } from 'vue'
 import { config } from './config'
 
@@ -10,6 +10,26 @@ function mergeStubs(target: Record<string, any>, source: GlobalMountOptions) {
       for (const [k, v] of Object.entries(source.stubs)) {
         target[k] = v
       }
+    }
+  }
+}
+
+// perform 1-level-deep-pseudo-clone merge in order to prevent config leaks
+// example: vue-router overwrites globalProperties.$router
+function mergeAppConfig(
+  configGlobalConfig: GlobalMountOptions['config'],
+  mountGlobalConfig: GlobalMountOptions['config']
+): Required<GlobalMountOptions>['config'] {
+  return {
+    ...configGlobalConfig,
+    ...mountGlobalConfig,
+    globalProperties: {
+      ...configGlobalConfig?.globalProperties,
+      ...mountGlobalConfig?.globalProperties
+    },
+    compilerOptions: {
+      ...configGlobalConfig?.compilerOptions,
+      ...mountGlobalConfig?.compilerOptions
     }
   }
 }
@@ -34,7 +54,7 @@ export function mergeGlobalProperties(
     components: { ...configGlobal.components, ...mountGlobal.components },
     provide: { ...configGlobal.provide, ...mountGlobal.provide },
     mocks: { ...configGlobal.mocks, ...mountGlobal.mocks },
-    config: { ...configGlobal.config, ...mountGlobal.config },
+    config: mergeAppConfig(configGlobal.config, mountGlobal.config),
     directives: { ...configGlobal.directives, ...mountGlobal.directives },
     renderStubDefaultSlot
   }
@@ -45,8 +65,8 @@ export const isObject = (obj: unknown): obj is Record<string, any> =>
 
 // https://stackoverflow.com/a/48218209
 export const mergeDeep = (
-  target: Record<string, any>,
-  source: Record<string, any>
+  target: Record<string, unknown>,
+  source: Record<string, unknown>
 ) => {
   if (!isObject(target) || !isObject(source)) {
     return source
@@ -57,7 +77,7 @@ export const mergeDeep = (
     const sourceValue = source[key]
 
     if (Array.isArray(targetValue) && Array.isArray(sourceValue)) {
-      target[key] = targetValue.concat(sourceValue)
+      target[key] = sourceValue
     } else if (isObject(targetValue) && isObject(sourceValue)) {
       target[key] = mergeDeep(Object.assign({}, targetValue), sourceValue)
     } else {
@@ -93,21 +113,7 @@ export function isObjectComponent(
   return Boolean(component && typeof component === 'object')
 }
 
-// https://stackoverflow.com/questions/15458876/check-if-a-string-is-html-or-not/15458987#answer-15458968
-export function isHTML(str: string) {
-  var a = document.createElement('div')
-  a.innerHTML = str
-
-  for (let c = a.childNodes, i = c.length; i--; ) {
-    if (c[i].nodeType == 1) {
-      return true
-    }
-  }
-
-  return false
-}
-
-export function textContent(element: Element): string {
+export function textContent(element: Node): string {
   // we check if the element is a comment first
   // to return an empty string in that case, instead of the comment content
   return element.nodeType !== Node.COMMENT_NODE
@@ -120,4 +126,16 @@ export function hasOwnProperty<O extends {}, P extends PropertyKey>(
   prop: P
 ): obj is O & Record<P, unknown> {
   return obj.hasOwnProperty(prop)
+}
+
+export function isNotNullOrUndefined<T extends {}>(
+  obj: T | null | undefined
+): obj is T {
+  return Boolean(obj)
+}
+
+export function isRefSelector(
+  selector: string | RefSelector
+): selector is RefSelector {
+  return typeof selector === 'object' && 'ref' in selector
 }

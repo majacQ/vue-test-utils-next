@@ -9,7 +9,6 @@ import {
   ComponentOptionsWithArrayProps,
   ComponentOptionsWithoutProps,
   ExtractPropTypes,
-  WritableComputedOptions,
   AppConfig,
   VNodeProps,
   ComponentOptionsMixin,
@@ -18,31 +17,81 @@ import {
   AllowedComponentProps,
   ComponentCustomProps,
   ExtractDefaultPropTypes,
-  VNode,
   EmitsOptions,
   ComputedOptions,
   ComponentPropsOptions,
-  ConcreteComponent
+  ComponentOptions,
+  ConcreteComponent,
+  Prop
 } from 'vue'
 
 import { MountingOptions, Slot } from './types'
 import {
   isFunctionalComponent,
-  isHTML,
   isObjectComponent,
-  mergeGlobalProperties,
-  isObject
+  mergeGlobalProperties
 } from './utils'
 import { processSlot } from './utils/compileSlots'
-import { createWrapper, VueWrapper } from './vueWrapper'
+import { VueWrapper } from './vueWrapper'
 import { attachEmitListener } from './emit'
-import { createDataMixin } from './dataMixin'
-import { MOUNT_COMPONENT_REF, MOUNT_PARENT_NAME } from './constants'
-import { createStub, stubComponents } from './stubs'
-import { isLegacyFunctionalComponent } from './utils/vueCompatSupport'
+import { stubComponents, addToDoNotStubComponents, registerStub } from './stubs'
+import {
+  isLegacyFunctionalComponent,
+  unwrapLegacyVueExtendComponent
+} from './utils/vueCompatSupport'
+import { trackInstance } from './utils/autoUnmount'
+import { createVueWrapper } from './wrapperFactory'
 
 // NOTE this should come from `vue`
 type PublicProps = VNodeProps & AllowedComponentProps & ComponentCustomProps
+
+const MOUNT_OPTIONS: Array<keyof MountingOptions<any>> = [
+  'attachTo',
+  'attrs',
+  'data',
+  'props',
+  'slots',
+  'global',
+  'shallow'
+]
+
+function getInstanceOptions(
+  options: MountingOptions<any> & Record<string, any>
+): Record<string, any> {
+  if (options.methods) {
+    console.warn(
+      "Passing a `methods` option to mount was deprecated on Vue Test Utils v1, and it won't have any effect on v2. For additional info: https://vue-test-utils.vuejs.org/upgrading-to-v1/#setmethods-and-mountingoptions-methods"
+    )
+    delete options.methods
+  }
+
+  const resultOptions = { ...options }
+  for (const key of Object.keys(options)) {
+    if (MOUNT_OPTIONS.includes(key as keyof MountingOptions<any>)) {
+      delete resultOptions[key]
+    }
+  }
+  return resultOptions
+}
+
+// Class component (without vue-class-component) - no props
+export function mount<V>(
+  originalComponent: {
+    new (...args: any[]): V
+    __vccOpts: any
+  },
+  options?: MountingOptions<any> & Record<string, any>
+): VueWrapper<ComponentPublicInstance<V>>
+
+// Class component (without vue-class-component) - props
+export function mount<V, P>(
+  originalComponent: {
+    new (...args: any[]): V
+    __vccOpts: any
+    defaultProps?: Record<string, Prop<any>> | string[]
+  },
+  options?: MountingOptions<P & PublicProps> & Record<string, any>
+): VueWrapper<ComponentPublicInstance<V>>
 
 // Class component - no props
 export function mount<V>(
@@ -50,7 +99,7 @@ export function mount<V>(
     new (...args: any[]): V
     registerHooks(keys: string[]): void
   },
-  options?: MountingOptions<any>
+  options?: MountingOptions<any> & Record<string, any>
 ): VueWrapper<ComponentPublicInstance<V>>
 
 // Class component - props
@@ -60,13 +109,13 @@ export function mount<V, P>(
     props(Props: P): any
     registerHooks(keys: string[]): void
   },
-  options?: MountingOptions<P & PublicProps>
+  options?: MountingOptions<P & PublicProps> & Record<string, any>
 ): VueWrapper<ComponentPublicInstance<V>>
 
 // Functional component with emits
 export function mount<Props, E extends EmitsOptions = {}>(
   originalComponent: FunctionalComponent<Props, E>,
-  options?: MountingOptions<Props & PublicProps>
+  options?: MountingOptions<Props & PublicProps> & Record<string, any>
 ): VueWrapper<ComponentPublicInstance<Props>>
 
 // Component declared with defineComponent
@@ -101,7 +150,8 @@ export function mount<
   options?: MountingOptions<
     Partial<Defaults> & Omit<Props & PublicProps, keyof Defaults>,
     D
-  >
+  > &
+    Record<string, any>
 ): VueWrapper<
   InstanceType<
     DefineComponent<
@@ -147,7 +197,8 @@ export function mount<
   options?: MountingOptions<Props & PublicProps, D>
 ): VueWrapper<
   ComponentPublicInstance<Props, RawBindings, D, C, M, E, VNodeProps & Props>
->
+> &
+  Record<string, any>
 
 // Component declared with { props: [] }
 export function mount<
@@ -160,9 +211,9 @@ export function mount<
   Mixin extends ComponentOptionsMixin = ComponentOptionsMixin,
   Extends extends ComponentOptionsMixin = ComponentOptionsMixin,
   EE extends string = string,
-  Props extends Readonly<{ [key in PropNames]?: any }> = Readonly<
-    { [key in PropNames]?: any }
-  >
+  Props extends Readonly<{ [key in PropNames]?: any }> = Readonly<{
+    [key in PropNames]?: any
+  }>
 >(
   componentOptions: ComponentOptionsWithArrayProps<
     PropNames,
@@ -219,28 +270,42 @@ export function mount<
 
 // implementation
 export function mount(
-  originalComponent: any,
-  options?: MountingOptions<any>
+  inputComponent: any,
+  options?: MountingOptions<any> & Record<string, any>
 ): VueWrapper<any> {
   // normalise the incoming component
+  let originalComponent = unwrapLegacyVueExtendComponent(inputComponent)
   let component: ConcreteComponent
+  const instanceOptions = getInstanceOptions(options ?? {})
 
   if (
     isFunctionalComponent(originalComponent) ||
     isLegacyFunctionalComponent(originalComponent)
   ) {
     component = defineComponent({
+      compatConfig: {
+        MODE: 3,
+        INSTANCE_LISTENERS: false,
+        INSTANCE_ATTRS_CLASS_STYLE: false,
+        COMPONENT_FUNCTIONAL: isLegacyFunctionalComponent(originalComponent)
+          ? 'suppress-warning'
+          : false
+      },
       setup:
         (_, { attrs, slots }) =>
         () =>
-          h(originalComponent, attrs, slots)
+          h(originalComponent, attrs, slots),
+      ...instanceOptions
     })
+    addToDoNotStubComponents(originalComponent)
   } else if (isObjectComponent(originalComponent)) {
-    component = { ...originalComponent }
+    component = { ...originalComponent, ...instanceOptions }
   } else {
     component = originalComponent
   }
 
+  addToDoNotStubComponents(component)
+  registerStub({ source: originalComponent, stub: component })
   const el = document.createElement('div')
 
   if (options?.attachTo) {
@@ -260,30 +325,16 @@ export function mount(
   }
 
   function slotToFunction(slot: Slot) {
-    if (typeof slot === 'object') {
-      if ('render' in slot && slot.render) {
-        return slot.render
-      }
-
-      return () => slot
+    switch (typeof slot) {
+      case 'function':
+        return slot
+      case 'object':
+        return () => h(slot)
+      case 'string':
+        return processSlot(slot)
+      default:
+        throw Error(`Invalid slot received.`)
     }
-
-    if (typeof slot === 'function') {
-      return slot
-    }
-
-    if (typeof slot === 'string') {
-      // if it is HTML we process and render it using h
-      if (isHTML(slot)) {
-        return (props: VNodeProps) => h(processSlot(slot), props)
-      }
-      // otherwise it is just a string so we just return it as-is
-      else {
-        return () => slot
-      }
-    }
-
-    throw Error(`Invalid slot received.`)
   }
 
   // handle any slots passed via mounting options
@@ -295,24 +346,12 @@ export function mount(
         [name, slot]: [string, Slot]
       ): { [key: string]: Function } => {
         if (Array.isArray(slot)) {
-          const normalized = slot.reduce<Array<Function | VNode>>(
-            (acc, curr) => {
-              const slotAsFn = slotToFunction(curr)
-              if (isObject(curr) && 'render' in curr) {
-                const rendered = h(slotAsFn as any)
-                return acc.concat(rendered)
-              }
-              return acc.concat(slotAsFn())
-            },
-            []
-          )
-          acc[name] = () => normalized
-
+          const normalized = slot.map(slotToFunction)
+          acc[name] = (args: unknown) => normalized.map((f) => f(args))
           return acc
         }
 
         acc[name] = slotToFunction(slot)
-
         return acc
       },
       {}
@@ -320,13 +359,23 @@ export function mount(
 
   // override component data with mounting options data
   if (options?.data) {
-    const dataMixin = createDataMixin(options.data())
-    ;(component as any).mixins = [
-      ...((component as any).mixins || []),
-      dataMixin
-    ]
+    const providedData = options.data()
+    if (isObjectComponent(originalComponent)) {
+      // component is guaranteed to be the same type as originalComponent
+      const objectComponent = component as ComponentOptions
+      const originalDataFn = originalComponent.data || (() => ({}))
+      objectComponent.data = (vm) => ({
+        ...originalDataFn.call(vm, vm),
+        ...providedData
+      })
+    } else {
+      throw new Error(
+        'data() option is not supported on functional and class components'
+      )
+    }
   }
 
+  const MOUNT_COMPONENT_REF = 'VTU_COMPONENT'
   // we define props as reactive so that way when we update them with `setProps`
   // Vue's reactivity system will cause a rerender.
   const props = reactive({
@@ -342,22 +391,12 @@ export function mount(
 
   // create the wrapper component
   const Parent = defineComponent({
-    name: MOUNT_PARENT_NAME,
+    name: 'VTU_ROOT',
     render() {
-      // https://github.com/vuejs/vue-test-utils-next/issues/651
-      // script setup components include an empty `expose` array as part of the
-      // code generated by the SFC compiler. Eg a component might look like
-      // { expose: [], setup: [Function], render: [Function] }
-      // not sure why (yet), but the empty expose array causes events to not be
-      // correctly captured.
-      // TODO: figure out why this is happening and understand the implications of
-      // the expose rfc for Test Utils.
-      if (isObjectComponent(component)) {
-        delete component.expose
-      }
       return h(component, props, slots)
     }
   })
+  addToDoNotStubComponents(Parent)
 
   const setProps = (newProps: Record<string, unknown>) => {
     for (const [k, v] of Object.entries(newProps)) {
@@ -371,7 +410,7 @@ export function mount(
   const app = createApp(Parent)
 
   // add tracking for emitted events
-  // this must be done after `createApp`: https://github.com/vuejs/vue-test-utils-next/issues/436
+  // this must be done after `createApp`: https://github.com/vuejs/test-utils/issues/436
   attachEmitListener()
 
   // global mocks mixin
@@ -418,7 +457,7 @@ export function mount(
   if (global.components) {
     for (const key of Object.keys(global.components)) {
       // avoid registering components that are stubbed twice
-      if (!global.stubs[key]) {
+      if (!(key in global.stubs)) {
         app.component(key, global.components[key])
       }
     }
@@ -443,24 +482,19 @@ export function mount(
   stubComponents(global.stubs, options?.shallow, global?.renderStubDefaultSlot)
 
   // users expect stubs to work with globally registered
-  // components, too, such as <router-link> and <router-view>
-  // so we register those globally.
-  // ref: https://github.com/vuejs/vue-test-utils-next/issues/249
-  // we register the component as named in the stubs to avoid not being
-  // able to resolve the component later due to casing
-  // ref: https://github.com/vuejs/vue-test-utils-next/issues/425
+  // components so we register stubs as global components to avoid
+  // warning about not being able to resolve component
+  //
+  // component implementation provided here will never be called
+  // but we need name to make sure that stubComponents will
+  // properly stub this later by matching stub name
+  //
+  // ref: https://github.com/vuejs/test-utils/issues/249
+  // ref: https://github.com/vuejs/test-utils/issues/425
   if (global?.stubs) {
-    for (const [name, stub] of Object.entries(global.stubs)) {
-      if (stub === true) {
-        const stubbed = createStub({
-          name,
-          renderStubDefaultSlot: global?.renderStubDefaultSlot
-        })
-        // default stub.
-        app.component(name, stubbed)
-      } else {
-        // user has provided a custom implementation.
-        app.component(name, stub)
+    for (const name of Object.keys(global.stubs)) {
+      if (!app.component(name)) {
+        app.component(name, { name })
       }
     }
   }
@@ -472,19 +506,15 @@ export function mount(
   const warnSave = console.warn
   console.warn = () => {}
 
-  // get `vm`.
-  // for some unknown reason, getting the `vm` for components using `<script setup>`
-  // as of Vue 3.0.3 works differently.
-  // if `appRef` has keys, use that (vm always has keys like $el, $props etc).
-  // if not, use the return value from app.mount.
   const appRef = vm.$refs[MOUNT_COMPONENT_REF] as ComponentPublicInstance
-  const $vm = Reflect.ownKeys(appRef).length ? appRef : vm
   // we add `hasOwnProperty` so jest can spy on the proxied vm without throwing
-  $vm.hasOwnProperty = (property) => {
-    return Reflect.has($vm, property)
+  appRef.hasOwnProperty = (property) => {
+    return Reflect.has(appRef, property)
   }
   console.warn = warnSave
-  return createWrapper(app, $vm, setProps)
+  const wrapper = createVueWrapper(app, appRef, setProps)
+  trackInstance(wrapper)
+  return wrapper
 }
 
 export const shallowMount: typeof mount = (component: any, options?: any) => {

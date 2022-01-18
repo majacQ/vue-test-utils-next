@@ -1,20 +1,19 @@
-const package = require('../../package.json')
-/** @typedef {import('vitepress').UserConfig} UserConfig */
+import { defineConfig } from 'vitepress'
+import packageJSON from '../../package.json'
 
-/** @type {UserConfig} */
-const config = {
-  title: `Vue Test Utils for Vue 3 (${package.version})`,
+export default defineConfig({
+  title: `Vue Test Utils for Vue 3 (${packageJSON.version})`,
   description: 'The documentation for the official Vue Test Utils for Vue 3',
   locales: {
     '/': {
       lang: 'en-US',
-      title: `Vue Test Utils for Vue 3 (${package.version})`
+      title: `Vue Test Utils for Vue 3 (${packageJSON.version})`
     }
   },
   head: [['link', { rel: 'icon', href: `/logo.png` }]],
   themeConfig: {
-    repo: 'vuejs/vue-test-utils-next',
-    docsRepo: 'vuejs/vue-test-utils-next',
+    repo: 'vuejs/test-utils',
+    docsRepo: 'vuejs/test-utils',
     docsDir: 'docs',
     docsBranch: 'master',
     editLinks: true,
@@ -31,7 +30,7 @@ const config = {
       { text: 'Migrating from Vue 2', link: '/migration/' },
       {
         text: 'Changelog',
-        link: 'https://github.com/vuejs/vue-test-utils-next/releases'
+        link: 'https://github.com/vuejs/test-utils/releases'
       }
     ],
     sidebar: [
@@ -90,10 +89,6 @@ const config = {
           { text: 'Testing Vue Router', link: '/guide/advanced/vue-router' },
           { text: 'Testing Teleport', link: '/guide/advanced/teleport' },
           {
-            text: 'Third-party integration',
-            link: '/guide/advanced/third-party'
-          },
-          {
             text: 'Stubs and Shallow Mount',
             link: '/guide/advanced/stubs-shallow-mount'
           }
@@ -120,6 +115,4 @@ const config = {
       }
     ]
   }
-}
-
-module.exports = config
+})

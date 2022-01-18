@@ -1,5 +1,5 @@
-import { defineComponent } from 'vue'
-import { mount, MountingOptions, RouterLinkStub, shallowMount } from '../src'
+import { DefineComponent, defineComponent } from 'vue'
+import { mount, RouterLinkStub, shallowMount } from '../src'
 import Issue425 from './components/Issue425.vue'
 
 const compA = defineComponent({
@@ -48,7 +48,7 @@ describe('getComponent', () => {
   })
 
   it('should throw if not found with a component selector that has no name', () => {
-    const wrapper = mount(compA)
+    const wrapper = mount(compB)
     expect(() => wrapper.getComponent(compA)).toThrowError(
       'Unable to get specified component within: <div class="A"></div>'
     )
@@ -66,15 +66,19 @@ describe('getComponent', () => {
     }
   }
 
-  // https://github.com/vuejs/vue-test-utils-next/issues/425
+  // https://github.com/vuejs/test-utils/issues/425
   it('works with router-link and mount', () => {
     const wrapper = mount(Issue425, options)
-    expect(wrapper.getComponent('.link').props('to')).toEqual({ name })
+    expect(wrapper.getComponent<DefineComponent>('.link').props('to')).toEqual({
+      name
+    })
   })
 
-  // https://github.com/vuejs/vue-test-utils-next/issues/425
+  // https://github.com/vuejs/test-utils/issues/425
   it('works with router-link and shallowMount', () => {
     const wrapper = shallowMount(Issue425, options)
-    expect(wrapper.getComponent('.link').props('to')).toEqual({ name })
+    expect(wrapper.getComponent<DefineComponent>('.link').props('to')).toEqual({
+      name
+    })
   })
 })

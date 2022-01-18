@@ -1,6 +1,6 @@
-import { h } from 'vue'
+import { defineComponent, h } from 'vue'
 
-import { mount } from '../../src'
+import { flushPromises, mount } from '../../src'
 import Hello from '../components/Hello.vue'
 import WithProps from '../components/WithProps.vue'
 import ComponentWithSlots from '../components/ComponentWithSlots.vue'
@@ -16,7 +16,6 @@ describe('slots', () => {
           named: namedString
         }
       })
-      expect(wrapper.vm.$slots.default!()[0].children).toBe(defaultString)
       expect(wrapper.find('.default').text()).toBe(defaultString)
       expect(wrapper.find('.named').text()).toBe(namedString)
     })
@@ -36,11 +35,37 @@ describe('slots', () => {
       expect(wrapper.find('.namedNested').exists()).toBe(true)
     })
 
+    it('supports providing html string with tags valid only nested in some other tag', () => {
+      const wrapper = mount(ComponentWithSlots, {
+        slots: {
+          insideTable: '<col><col><col>'
+        }
+      })
+
+      expect(wrapper.findAll('.insideTable col')).toHaveLength(3)
+    })
+
     it('supports providing a render function to slot', () => {
       const wrapper = mount(ComponentWithSlots, {
         slots: {
           default: h('span', {}, 'Default'),
           named: h('span', {}, 'Named')
+        }
+      })
+
+      expect(wrapper.find('.default').html()).toEqual(
+        '<div class="default"><span>Default</span></div>'
+      )
+      expect(wrapper.find('.named').html()).toEqual(
+        '<div class="named"><span>Named</span></div>'
+      )
+    })
+
+    it('supports providing an object with template to slot', () => {
+      const wrapper = mount(ComponentWithSlots, {
+        slots: {
+          default: { template: '<span>Default</span>' },
+          named: { template: '<span>Named</span>' }
         }
       })
 
@@ -70,12 +95,13 @@ describe('slots', () => {
       })
 
       expect(wrapper.find('.named').html()).toBe(
-        '' +
-          '<div class="named">' +
-          '<div id="root">' +
-          '<div id="msg"></div>' +
-          '</div>' +
+        [
+          '<div class="named">',
+          '  <div id="root">',
+          '    <div id="msg">Hello world</div>',
+          '  </div>',
           '</div>'
+        ].join('\n')
       )
     })
   })
@@ -98,14 +124,14 @@ describe('slots', () => {
       })
 
       expect(wrapper.find('.scoped').text()).toEqual(
-        '{"boolean":true,"string":"string","object":{"foo":"foo"}}'
+        '{"aBoolean":true,"aString":"string","anObject":{"foo":"foo"}}'
       )
     })
 
     it('allows passing a function to store variables for assertion', () => {
       let assertParams
 
-      const wrapper = mount(ComponentWithSlots, {
+      mount(ComponentWithSlots, {
         slots: {
           scoped: (params) => {
             assertParams = params
@@ -116,16 +142,16 @@ describe('slots', () => {
       })
 
       expect(assertParams).toEqual({
-        boolean: true,
-        string: 'string',
-        object: { foo: 'foo' }
+        aBoolean: true,
+        aString: 'string',
+        anObject: { foo: 'foo' }
       })
     })
 
     it('allows passing a scoped slot via string with no destructuring using the # syntax', () => {
       const wrapper = mount(ComponentWithSlots, {
         slots: {
-          scoped: `<template #scoped="params"><div>Just a plain {{ params.boolean }} {{ params.string }}</div></template>`
+          scoped: `<template #scoped="params"><div>Just a plain {{ params.aBoolean }} {{ params.aString }}</div></template>`
         }
       })
 
@@ -135,7 +161,7 @@ describe('slots', () => {
     it('allows passing a scoped slot via a string with destructuring using the # syntax', () => {
       const wrapper = mount(ComponentWithSlots, {
         slots: {
-          scoped: `<template #scoped="{string, boolean}"><div>Just a plain {{ boolean }} {{ string }}</div></template>`
+          scoped: `<template #scoped="{aString, aBoolean}"><div>Just a plain {{ aBoolean }} {{ aString }}</div></template>`
         }
       })
 
@@ -144,11 +170,11 @@ describe('slots', () => {
 
     it('allows passing a scoped slot via string with no destructuring using the v-slot syntax ', () => {
       // Note: there is intentionally a carriage return after the first ` in the scoped key.
-      // https://github.com/vuejs/vue-test-utils-next/issues/202
+      // https://github.com/vuejs/test-utils/issues/202
       const wrapper = mount(ComponentWithSlots, {
         slots: {
           scoped: `
-            <template v-slot:scoped="params"><div>Just a plain {{ params.boolean }} {{ params.string }}</div></template>
+            <template v-slot:scoped="params"><div>Just a plain {{ params.aBoolean }} {{ params.aString }}</div></template>
           `
         }
       })
@@ -159,7 +185,17 @@ describe('slots', () => {
     it('allows passing a scoped slot via string with no destructuring without template tag', () => {
       const wrapper = mount(ComponentWithSlots, {
         slots: {
-          scoped: `<div>Just a plain {{ params.boolean }} {{ params.string }}</div>`
+          scoped: `<div>Just a plain {{ params.aBoolean }} {{ params.aString }}</div>`
+        }
+      })
+
+      expect(wrapper.find('.scoped').text()).toEqual('Just a plain true string')
+    })
+
+    it('allows passing a scoped slot via string with no HTML inside without template tag', () => {
+      const wrapper = mount(ComponentWithSlots, {
+        slots: {
+          scoped: 'Just a plain {{ params.aBoolean }} {{ params.aString }}'
         }
       })
 
@@ -189,5 +225,53 @@ describe('slots', () => {
     expect(wrapper.find('.foo').exists()).toBe(true)
     expect(wrapper.find('span').text()).toBe('Default')
     expect(wrapper.find('#with-props').text()).toBe('props-msg')
+  })
+
+  it('triggers child component lifecycles', async () => {
+    const parentMounted = jest.fn()
+    const childMounted = jest.fn()
+
+    const Parent = defineComponent({
+      mounted() {
+        parentMounted()
+      },
+      render() {
+        return h(this.$slots.default!)
+      }
+    })
+
+    const Child = defineComponent({
+      render() {
+        return h('span')
+      },
+      mounted() {
+        childMounted()
+      }
+    })
+
+    mount(Parent, {
+      global: {
+        components: { Child }
+      },
+      slots: {
+        default: Child
+      }
+    })
+
+    await flushPromises()
+
+    expect(parentMounted).toHaveBeenCalled()
+    expect(childMounted).toHaveBeenCalled()
+  })
+
+  it('should return the correct number of vnodes in the slots', () => {
+    const wrapper = mount(ComponentWithSlots, {
+      slots: {
+        default: '<div/><div/>'
+      }
+    })
+
+    // @ts-expect-error
+    expect(wrapper.vm.$slots.default()).toHaveLength(2)
   })
 })

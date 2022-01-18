@@ -1,4 +1,3 @@
-import { ComponentPublicInstance } from 'vue'
 import { GlobalMountOptions } from './types'
 import { VueWrapper } from './vueWrapper'
 import { DOMWrapper } from './domWrapper'
@@ -6,8 +5,8 @@ import { DOMWrapper } from './domWrapper'
 export interface GlobalConfigOptions {
   global: Required<GlobalMountOptions>
   plugins: {
-    VueWrapper: Pluggable<VueWrapper<ComponentPublicInstance>>
-    DOMWrapper: Pluggable<DOMWrapper<Element>>
+    VueWrapper: Pluggable<VueWrapper>
+    DOMWrapper: Pluggable<DOMWrapper<Node>>
   }
   renderStubDefaultSlot: boolean
 }
@@ -18,7 +17,7 @@ interface Plugin<Instance, O> {
   options: O
 }
 
-class Pluggable<Instance = DOMWrapper<Element>> {
+class Pluggable<Instance = DOMWrapper<Node>> {
   installedPlugins: Plugin<Instance, any>[] = []
 
   install<O>(handler: (instance: Instance) => Record<string, any>): void

@@ -2,6 +2,7 @@ import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '../src'
 import Hello from './components/Hello.vue'
 import ComponentWithoutName from './components/ComponentWithoutName.vue'
+import ScriptSetupWithChildren from './components/ScriptSetupWithChildren.vue'
 
 const compC = defineComponent({
   name: 'ComponentC',
@@ -47,13 +48,22 @@ describe('findComponent', () => {
   it('finds component by ref', () => {
     const wrapper = mount(compA)
     // find by ref
-    expect(wrapper.findComponent({ ref: 'hello' })).toBeTruthy()
+    expect(wrapper.findComponent({ ref: 'hello' }).exists()).toBe(true)
+  })
+
+  it('does not find plain dom element by ref', () => {
+    const ComponentWithRefOnDomElement = defineComponent({
+      template: '<div ref="hello">Hello!</div>'
+    })
+    const wrapper = mount(ComponentWithRefOnDomElement)
+
+    expect(wrapper.findComponent({ ref: 'hello' }).exists()).toBe(false)
   })
 
   it('finds component by dom selector', () => {
     const wrapper = mount(compA)
     // find by DOM selector
-    expect(wrapper.findComponent('.C').vm).toHaveProperty(
+    expect(wrapper.findComponent<typeof compC>('.C').vm).toHaveProperty(
       '$options.name',
       'ComponentC'
     )
@@ -61,16 +71,7 @@ describe('findComponent', () => {
 
   it('does allows using complicated DOM selector query', () => {
     const wrapper = mount(compA)
-    expect(wrapper.findComponent('.B > .C').vm).toHaveProperty(
-      '$options.name',
-      'ComponentC'
-    )
-  })
-
-  it('finds a component when root of mounted component', async () => {
-    const wrapper = mount(compD)
-    // make sure it finds the component, not its root
-    expect(wrapper.findComponent('.c-as-root-on-d').vm).toHaveProperty(
+    expect(wrapper.findComponent<typeof compC>('.B > .C').vm).toHaveProperty(
       '$options.name',
       'ComponentC'
     )
@@ -83,9 +84,60 @@ describe('findComponent', () => {
     expect(wrapper.findComponent({ name: 'component-c' }).exists()).toBeTruthy()
   })
 
+  it('finds component within script setup by name', () => {
+    const wrapper = mount(ScriptSetupWithChildren)
+    expect(wrapper.findComponent({ name: 'Hello' }).text()).toBe('Hello world')
+    expect(
+      wrapper.findComponent({ name: 'ComponentWithInput' }).exists()
+    ).toBeTruthy()
+    expect(
+      wrapper.findComponent({ name: 'component-with-input' }).exists()
+    ).toBeTruthy()
+  })
+
+  it('finds component within script setup without name', () => {
+    const wrapper = mount(ScriptSetupWithChildren)
+    expect(wrapper.findComponent({ name: 'ScriptSetup' }).exists()).toBeTruthy()
+    expect(
+      wrapper.findComponent({ name: 'ComponentWithoutName' }).exists()
+    ).toBeTruthy()
+    expect(
+      wrapper.findComponent({ name: 'component-without-name' }).exists()
+    ).toBeTruthy()
+  })
+
   it('finds root component', async () => {
     const Comp = defineComponent({
       name: 'C',
+      template: `
+        <input v-model="msg" />
+        {{ msg }}
+      `,
+      data() {
+        return { msg: 'foo' }
+      }
+    })
+    const wrapper = mount(Comp)
+    expect(wrapper.findComponent(Comp).exists()).toBe(true)
+    await wrapper.find('input').setValue('bar')
+    expect(wrapper.html()).toContain('bar')
+  })
+
+  it('finds root component when recursion is used', async () => {
+    const Comp = defineComponent({
+      props: ['depth'],
+      name: 'Comp',
+      template: `
+        <Comp :depth="depth + 1" v-if="depth < 2" />
+        Depth {{ depth }}
+      `
+    })
+    const wrapper = mount(Comp, { props: { depth: 0 } })
+    expect(wrapper.findComponent(Comp).props('depth')).toBe(0)
+  })
+
+  it('finds root component without name', async () => {
+    const Comp = defineComponent({
       template: `
         <input v-model="msg" />
         {{ msg }}
@@ -153,7 +205,23 @@ describe('findComponent', () => {
     })
 
     expect(wrapper.findComponent(Hello).exists()).toBe(true)
+    expect(wrapper.findAllComponents(Hello)).toHaveLength(1)
     expect(wrapper.findComponent(compB).exists()).toBe(true)
+    expect(wrapper.findAllComponents(compB)).toHaveLength(1)
+  })
+
+  it('finds a component by its stub', () => {
+    const HelloStub = defineComponent({ template: '<div>universal stub</div>' })
+
+    const wrapper = mount(compA, {
+      global: {
+        stubs: {
+          Hello: HelloStub
+        }
+      }
+    })
+
+    expect(wrapper.findComponent(HelloStub).exists()).toBe(true)
   })
 
   it('finds a component without a name by its locally assigned name', () => {
@@ -234,7 +302,7 @@ describe('findComponent', () => {
     expect(wrapper.findComponent(Hello).unmount).toThrowError()
   })
 
-  // https://github.com/vuejs/vue-test-utils-next/issues/173
+  // https://github.com/vuejs/test-utils/issues/173
   const ComponentA = {
     name: 'ComponentA',
     template: `<div><slot></slot></div>`
@@ -290,7 +358,7 @@ describe('findComponent', () => {
     expect(compB[0].vm.$el.querySelector('.content').textContent).toBe('1')
   })
 
-  // https://github.com/vuejs/vue-test-utils-next/pull/188
+  // https://github.com/vuejs/test-utils/pull/188
   const slotComponent = defineComponent({
     name: 'slotA',
     template: '<div><slot /><slot name="b" /></div>'
@@ -333,5 +401,91 @@ describe('findComponent', () => {
       }
     })
     expect(wrapper.findComponent(Func).exists()).toBe(true)
+  })
+
+  describe('chaining from dom wrapper', () => {
+    it('finds a component nested inside a node', () => {
+      const Comp = defineComponent({
+        components: { Hello: Hello },
+        template: '<div><div class="nested"><Hello /></div></div>'
+      })
+
+      const wrapper = mount(Comp)
+      expect(wrapper.find('.nested').findComponent(Hello).exists()).toBe(true)
+    })
+
+    it('finds a component inside DOM node', () => {
+      const Comp = defineComponent({
+        components: { Hello: Hello },
+        template:
+          '<div><Hello class="one"/><div class="nested"><Hello class="two" /></div></div>'
+      })
+
+      const wrapper = mount(Comp)
+      expect(wrapper.find('.nested').findComponent(Hello).classes('two')).toBe(
+        true
+      )
+    })
+
+    it('returns correct instance of recursive component', () => {
+      const Comp = defineComponent({
+        name: 'Comp',
+        props: ['firstLevel'],
+        template:
+          '<div class="first"><div class="nested"><Comp v-if="firstLevel" class="second" /></div></div>'
+      })
+
+      const wrapper = mount(Comp, { props: { firstLevel: true } })
+      expect(
+        wrapper.find('.nested').findComponent(Comp).classes('second')
+      ).toBe(true)
+    })
+
+    it('returns top-level component if it matches', () => {
+      const Comp = defineComponent({
+        name: 'Comp',
+        template: '<div class="top"></div>'
+      })
+
+      const wrapper = mount(Comp)
+      expect(wrapper.find('.top').findComponent(Comp).classes('top')).toBe(true)
+    })
+
+    it('finds functional components by component displayName', () => {
+      const cmp = () => h('button', { class: 'some-class ' })
+      cmp.displayName = 'FuncButton'
+      const Comp = defineComponent({
+        components: { ChildComponent: cmp },
+        template: '<div><child-component /><button>Test</button></div>'
+      })
+
+      const wrapper = mount(Comp)
+      expect(wrapper.findAllComponents({ name: cmp.displayName }).length).toBe(
+        1
+      )
+      expect(wrapper.findComponent({ name: cmp.displayName }).exists()).toBe(
+        true
+      )
+    })
+
+    it('uses refs of correct component when searching by ref', () => {
+      const Child = defineComponent({
+        components: { Hello },
+        template: '<div><Hello ref="testRef" class="inside" /></div>'
+      })
+      const Comp = defineComponent({
+        components: { Child, Hello },
+        template:
+          '<div><Child class="nested" /><Hello ref="testRef" class="outside" /></div>'
+      })
+
+      const wrapper = mount(Comp)
+      expect(
+        wrapper
+          .find('.nested')
+          .findComponent({ ref: 'testRef' })
+          .classes('inside')
+      ).toBe(true)
+    })
   })
 })

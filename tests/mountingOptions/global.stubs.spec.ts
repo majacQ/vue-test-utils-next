@@ -1,9 +1,10 @@
-import { h, ComponentOptions, defineComponent, defineAsyncComponent } from 'vue'
+import { h, defineComponent, defineAsyncComponent } from 'vue'
 
 import { config, flushPromises, mount, RouterLinkStub } from '../../src'
 import Hello from '../components/Hello.vue'
 import ComponentWithoutName from '../components/ComponentWithoutName.vue'
 import ComponentWithSlots from '../components/ComponentWithSlots.vue'
+import ScriptSetupWithChildren from '../components/ScriptSetupWithChildren.vue'
 
 describe('mounting options: stubs', () => {
   let configStubsSave = config.global.stubs
@@ -22,7 +23,7 @@ describe('mounting options: stubs', () => {
         return h('p')
       }
     }
-    const Component: ComponentOptions = {
+    const Component = {
       render() {
         return h(() => [h('div'), h(Foo)])
       }
@@ -37,7 +38,7 @@ describe('mounting options: stubs', () => {
     expect(wrapper.html()).toBe('<div></div>\n' + '<foo-stub></foo-stub>')
   })
 
-  // https://github.com/vuejs/vue-test-utils-next/issues/249
+  // https://github.com/vuejs/test-utils/issues/249
   it('applies stubs globally', () => {
     const Comp = defineComponent({
       template: '<div><foo /><router-link to="/foo" /><router-view /></div>'
@@ -131,7 +132,7 @@ describe('mounting options: stubs', () => {
         return h('p')
       }
     }
-    const Component: ComponentOptions = {
+    const Component = {
       render() {
         return h(() => [h('div'), h(Foo)])
       }
@@ -283,7 +284,7 @@ describe('mounting options: stubs', () => {
         return h('p')
       }
     }
-    const Component: ComponentOptions = {
+    const Component = {
       render() {
         return h(() => [h(Foo), h(Bar)])
       }
@@ -364,6 +365,33 @@ describe('mounting options: stubs', () => {
     expect(wrapper.html()).toBe('<foo-bar-stub></foo-bar-stub>')
   })
 
+  it('stubs components within script setup', () => {
+    const wrapper = mount(ScriptSetupWithChildren as any, {
+      global: {
+        stubs: {
+          Hello: { template: '<span>Stubbed Hello</span>' },
+          ComponentWithInput: {
+            template: '<span>Stubbed ComponentWithInput</span>'
+          },
+          ComponentWithoutName: {
+            template: '<span>Stubbed ComponentWithoutName</span>'
+          },
+          ComponentAsync: { template: '<span>Stubbed ComponentAsync</span>' },
+          ScriptSetup: { template: '<span>Stubbed ScriptSetup</span>' },
+          WithProps: { template: '<span>Stubbed WithProps</span>' }
+        }
+      }
+    })
+    expect(wrapper.html()).toBe(
+      '<span>Stubbed Hello</span>\n' +
+        '<span>Stubbed ComponentWithInput</span>\n' +
+        '<span>Stubbed ComponentWithoutName</span>\n' +
+        '<span>Stubbed ComponentAsync</span>\n' +
+        '<span>Stubbed ScriptSetup</span>\n' +
+        '<span>Stubbed WithProps</span>'
+    )
+  })
+
   it('stubs transition by default', () => {
     const Comp = {
       template: `<transition><div id="content" /></transition>`
@@ -417,6 +445,34 @@ describe('mounting options: stubs', () => {
     }
     const wrapper = mount(Comp)
     expect(wrapper.find('#content').exists()).toBe(true)
+  })
+
+  it('does not stub teleport by default', () => {
+    const Comp = {
+      template: `<teleport to="body"><div id="content" /></teleport>`
+    }
+    const wrapper = mount(Comp)
+
+    expect(wrapper.html()).toBe(
+      '<!--teleport start-->\n' + '<!--teleport end-->'
+    )
+  })
+
+  it('opts in to stubbing teleport ', () => {
+    const Comp = {
+      template: `<teleport to="body"><div id="content" /></teleport>`
+    }
+    const wrapper = mount(Comp, {
+      global: {
+        stubs: {
+          teleport: true
+        }
+      }
+    })
+
+    expect(wrapper.html()).toBe(
+      '<teleport-stub>\n' + '  <div id="content"></div>\n' + '</teleport-stub>'
+    )
   })
 
   it('stubs component by key prior before name', () => {
@@ -580,7 +636,6 @@ describe('mounting options: stubs', () => {
           }
         }
       })
-
       expect(wrapper.html()).toBe('<span>StubComponent</span>')
     })
   })
@@ -693,5 +748,34 @@ describe('mounting options: stubs', () => {
     })
 
     expect(wrapper.html()).toBe('<anonymous-stub>test</anonymous-stub>')
+  })
+
+  it('should not recreate stub across multiple renders', async () => {
+    const FooBar = {
+      name: 'FooBar',
+      render: () => h('span', 'real foobar')
+    }
+
+    const Comp = defineComponent({
+      data: () => ({ value: 1 }),
+      render() {
+        return h('div', {}, [this.value, h(FooBar)])
+      }
+    })
+
+    const wrapper = mount(Comp, {
+      global: {
+        stubs: {
+          'foo-bar': { name: 'FooBar', template: 'stub' }
+        }
+      }
+    })
+
+    const stub = wrapper.findComponent({ name: 'FooBar' })
+    await wrapper.setData({ value: 2 })
+
+    const stubAfterSecondRender = wrapper.findComponent({ name: 'FooBar' })
+
+    expect(stub.vm).toBe(stubAfterSecondRender.vm)
   })
 })

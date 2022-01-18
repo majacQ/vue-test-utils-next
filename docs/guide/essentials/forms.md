@@ -298,7 +298,7 @@ test('emits an event only if you lose focus to a button', () => {
   const componentToGetFocus = wrapper.find('button')
 
   wrapper.find('input').trigger('blur', {
-    relatedTarget: componentToGetFocus
+    relatedTarget: componentToGetFocus.element
   })
 
   expect(wrapper.emitted('focus-lost')).toBeTruthy()
@@ -358,7 +358,7 @@ test('fills in the form', async () => {
 
 What happens if your Input component is not that simple? You might be using a UI library, like Vuetify. If you rely on digging inside the markup to find the right element, your tests may break if the external library decides to change their internals.
 
-In such cases you can use set the value directly, using the component instance and `setValue`.
+In such cases you can set the value directly, using the component instance and `setValue`.
 
 Assume we have a form that uses the Vuetify textarea:
 

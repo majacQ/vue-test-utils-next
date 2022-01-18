@@ -5,27 +5,25 @@ import {
   Plugin,
   AppConfig,
   VNode,
-  VNodeProps
+  VNodeProps,
+  FunctionalComponent,
+  ComponentInternalInstance
 } from 'vue'
 
-interface RefSelector {
+export interface RefSelector {
   ref: string
 }
-
-interface NameSelector {
+export interface NameSelector {
   name: string
+  length?: never
 }
 
-interface RefSelector {
-  ref: string
-}
-
-interface NameSelector {
-  name: string
-}
-
-export type FindComponentSelector = RefSelector | NameSelector | string
-export type FindAllComponentsSelector = NameSelector | string
+export type FindAllComponentsSelector =
+  | DefinedComponent
+  | FunctionalComponent
+  | NameSelector
+  | string
+export type FindComponentSelector = RefSelector | FindAllComponentsSelector
 
 export type Slot = VNode | string | { render: Function } | Function | Component
 
@@ -63,9 +61,7 @@ export interface MountingOptions<Props, Data = {}> {
    */
   attrs?: Record<string, unknown>
   /**
-   * Provide values for slots on a component. Slots can be a component
-   * imported from a .vue file or a render function. Providing an
-   * object with a `template` key is not supported.
+   * Provide values for slots on a component.
    * @see https://next.vue-test-utils.vuejs.org/api/#slots
    */
   slots?: SlotDictionary & {
@@ -89,6 +85,8 @@ export interface MountingOptions<Props, Data = {}> {
   shallow?: boolean
 }
 
+export type Stub = boolean | Component
+export type Stubs = Record<string, Stub> | Array<string>
 export type GlobalMountOptions = {
   /**
    * Installs plugins on the component.
@@ -132,7 +130,7 @@ export type GlobalMountOptions = {
    * @default "{ transition: true, 'transition-group': true }"
    * @see https://next.vue-test-utils.vuejs.org/api/#global-stubs
    */
-  stubs?: Record<any, any>
+  stubs?: Stubs
   /**
    * Allows rendering the default slot content, even when using
    * `shallow` or `shallowMount`.
@@ -142,4 +140,11 @@ export type GlobalMountOptions = {
   renderStubDefaultSlot?: boolean
 }
 
-export type VueElement = Element & { __vue_app__?: any }
+export type VueNode<T extends Node = Node> = T & {
+  __vue_app__?: any
+  __vueParentComponent?: ComponentInternalInstance
+}
+
+export type VueElement = VueNode<Element>
+
+export type DefinedComponent = new (...args: any[]) => any

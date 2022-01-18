@@ -1,6 +1,6 @@
 # Migrating from Vue Test Utils v1
 
-A review of changes VTU v1 -> VTU v2, and some code snippets to showcase required modifications. If you encounter a bug or difference in behavior not documented here, please [open an issue](https://github.com/vuejs/vue-test-utils-next/issues/new).
+A review of changes VTU v1 -> VTU v2, and some code snippets to showcase required modifications. If you encounter a bug or difference in behavior not documented here, please [open an issue](https://github.com/vuejs/test-utils/issues/new).
 
 ## Changes
 
@@ -143,7 +143,7 @@ const wrapper = mount(App, {
 }
 ```
 
-### `shallowMount` and `renderDefaultStubSlot`
+### `shallowMount` and `renderStubDefaultSlot`
 
 `shallowMount` is intended to stub out any custom components. While this was the case in Vue Test Utils v1, stubbed components would still render their default `<slot />`. While this was unintended, some users came to enjoy this feature. This behavior is corrected in v2 - **the slot content for a stubbed component is not rendered**.
 
@@ -206,7 +206,7 @@ You can enable the old behavior like this:
 ```js
 import { config } from '@vue/test-utils'
 
-config.renderDefaultStubSlot = true
+config.renderStubDefaultSlot = true
 ```
 
 ### `destroy` is now `unmount` to match Vue 3
@@ -216,3 +216,19 @@ Vue 3 renamed the `vm.$destroy` to `vm.$unmount`. Vue Test Utils has followed su
 ### `scopedSlots` is now merged with `slots`
 
 Vue 3 united the `slot` and `scoped-slot` syntax under a single syntax, `v-slot`, which you can read about in the [the docs](https://v3.vuejs.org/guide/migration/slots-unification.html#overview). Since `slot` and `scoped-slot` are now merged, the `scopedSlots` mounting option is now deprecated - just use the `slots` mounting option for everything.
+
+### `findAll().at()` removed
+
+`findAll()` now returns an array of DOMWrappers.
+
+**Before:**
+
+```js
+wrapper.findAll('[data-test="token"]').at(0);
+```
+
+**After:**
+
+```js
+wrapper.findAll('[data-test="token"]')[0];
+```

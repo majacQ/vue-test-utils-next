@@ -16,7 +16,7 @@ jobs:
 
     strategy:
       matrix:
-        node: [12, 14, 16]
+        node: [14, 16]
 
     steps:
     - uses: actions/checkout@v2
@@ -27,11 +27,9 @@ jobs:
     - run: yarn install
     - run: yarn lint
     - run: yarn test
-    - run: yarn test:compat
     - run: yarn build
       env:
         CI: true
     - run: yarn test:build
-    - run: yarn test:compat:build
     - run: yarn tsd
     - run: yarn vue-tsc
